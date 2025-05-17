@@ -1,0 +1,9 @@
+langchain
+langchain-community
+langchain-google-genai
+python-dotenv
+google-genai
+pypdf
+pinecone
+langchain-pinecone
+langchain-huggingface
