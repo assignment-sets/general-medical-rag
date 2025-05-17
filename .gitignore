@@ -29,9 +29,7 @@ dist/
 Thumbs.db
 
 # personal utility file
-scrap.md
-test_me.py
-processing/
+scrap/
 data/
 
 # PyCharm / JetBrains IDE files

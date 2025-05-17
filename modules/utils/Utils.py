@@ -1,6 +1,6 @@
 import os
 import multiprocessing
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 from pypdf import PdfReader, PdfWriter
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -15,18 +15,20 @@ class Utils:
     @staticmethod
     def get_embedder() -> HuggingFaceEmbeddings:
         if Utils._embedder is None:
-            print("[ℹ️] Loading embedding model...")
-            Utils._embedder = HuggingFaceEmbeddings(
-                model_name=Utils._embedding_model_name
-            )
-            print("[✅] Embedder loaded.")
+            try:
+                print("[ℹ️] Loading embedding model...")
+                Utils._embedder = HuggingFaceEmbeddings(
+                    model_name=Utils._embedding_model_name
+                )
+                print("[✅] Embedder loaded.")
+            except Exception as e:
+                print(f"[❌] Failed to load embedder: {e}")
+                Utils._embedder = None
         return Utils._embedder
-    
+
     @staticmethod
     def remove_leading_and_trailing_pages(
-        pdf_path: str,
-        pages_to_remove_from_start: int,
-        pages_to_remove_from_end: int
+        pdf_path: str, pages_to_remove_from_start: int, pages_to_remove_from_end: int
     ) -> str | None:
         """
         Removes a specified number of pages from the start and/or end of a PDF file.
@@ -48,8 +50,7 @@ class Utils:
             return None
 
         if not pdf_path.lower().endswith(".pdf"):
-            print(
-                f"Error: Input file '{pdf_path}' does not appear to be a PDF.")
+            print(f"Error: Input file '{pdf_path}' does not appear to be a PDF.")
             return None
 
         if pages_to_remove_from_start < 0 or pages_to_remove_from_end < 0:
@@ -82,7 +83,9 @@ class Utils:
 
             pages_kept_count = 0
             # Add pages to the writer if the range is valid
-            if start_keep_index <= end_keep_index:  # Check if there are any pages to keep
+            if (
+                start_keep_index <= end_keep_index
+            ):  # Check if there are any pages to keep
                 for i in range(start_keep_index, end_keep_index + 1):
                     writer.add_page(reader.pages[i])
                     pages_kept_count += 1
@@ -100,11 +103,13 @@ class Utils:
 
             if pages_kept_count > 0:
                 print(
-                    f"Successfully created updated PDF: '{output_pdf_path}' with {pages_kept_count} pages.")
+                    f"Successfully created updated PDF: '{output_pdf_path}' with {pages_kept_count} pages."
+                )
             else:
                 # This covers cases where all pages were removed
                 print(
-                    f"Successfully created an empty PDF (0 pages retained): '{output_pdf_path}'")
+                    f"Successfully created an empty PDF (0 pages retained): '{output_pdf_path}'"
+                )
 
             return output_pdf_path
 
@@ -113,7 +118,9 @@ class Utils:
             return None
 
     @staticmethod
-    def _process_single_pdf_for_chunking(args_tuple: Tuple[str, int, int]) -> List[Document]:
+    def _process_single_pdf_for_chunking(
+        args_tuple: Tuple[str, int, int],
+    ) -> List[Document]:
         """
         Helper function to load and split a single PDF.
         This function is designed to be called by multiprocessing.Pool.map,
@@ -149,7 +156,7 @@ class Utils:
             text_splitter = RecursiveCharacterTextSplitter(
                 chunk_size=chunk_size,
                 chunk_overlap=chunk_overlap,
-                length_function=len,      # Use character count for chunk size
+                length_function=len,  # Use character count for chunk size
                 is_separator_regex=False,  # Use default separators like "\n\n", "\n", " ", ""
             )
 
@@ -159,8 +166,7 @@ class Utils:
             # print(f"Worker (PID {os.getpid()}): Finished {pdf_path}. Pages: {len(pages_as_documents)}, Chunks: {len(chunks)}")
             return chunks
         except Exception as e:
-            print(
-                f"Worker (PID {os.getpid()}): Error processing PDF {pdf_path}: {e}")
+            print(f"Worker (PID {os.getpid()}): Error processing PDF {pdf_path}: {e}")
             return []
 
     @staticmethod
@@ -168,7 +174,7 @@ class Utils:
         pdf_paths: List[str],
         chunk_size: int = 1000,
         chunk_overlap: int = 200,
-        use_multiprocessing: bool = True
+        use_multiprocessing: bool = True,
     ) -> List[Document]:
         """
         Loads document(s) from the given PDF path(s), splits them into
@@ -208,18 +214,19 @@ class Utils:
 
         # Prepare arguments for each call to _process_single_pdf_for_chunking
         # Each item in process_args will be a tuple (pdf_path, chunk_size, chunk_overlap)
-        process_args_list = [(path, chunk_size, chunk_overlap)
-                             for path in valid_pdf_paths]
+        process_args_list = [
+            (path, chunk_size, chunk_overlap) for path in valid_pdf_paths
+        ]
 
         if use_multiprocessing and len(valid_pdf_paths) > 0:
             num_files = len(valid_pdf_paths)
             cpu_cores = os.cpu_count()
             # Use at most cpu_cores, but not more processes than files
-            num_processes = min(
-                num_files, cpu_cores if cpu_cores is not None else 4)
+            num_processes = min(num_files, cpu_cores if cpu_cores is not None else 4)
 
             print(
-                f"Starting PDF processing with {num_processes} worker process(es) for {num_files} PDF file(s)...")
+                f"Starting PDF processing with {num_processes} worker process(es) for {num_files} PDF file(s)..."
+            )
 
             # try-finally for pool is implicitly handled by 'with' statement
             try:
@@ -227,13 +234,15 @@ class Utils:
                     # pool.map passes each element from process_args_list as a single argument
                     # to Utils._process_single_pdf_for_chunking
                     list_of_chunk_lists = pool.map(
-                        Utils._process_single_pdf_for_chunking, process_args_list)
+                        Utils._process_single_pdf_for_chunking, process_args_list
+                    )
 
                 # list_of_chunk_lists is a list, where each element is the list of chunks from one PDF
                 for chunk_list_from_one_pdf in list_of_chunk_lists:
                     all_chunks.extend(chunk_list_from_one_pdf)
                 print(
-                    f"Multiprocessing finished. Total {len(all_chunks)} chunks from {num_files} PDF(s).")
+                    f"Multiprocessing finished. Total {len(all_chunks)} chunks from {num_files} PDF(s)."
+                )
 
             except Exception as e:  # Catch potential errors from multiprocessing itself
                 print(f"Multiprocessing pool error: {e}")
@@ -243,17 +252,28 @@ class Utils:
                     chunks = Utils._process_single_pdf_for_chunking(args_tuple)
                     all_chunks.extend(chunks)
                 print(
-                    f"Sequential fallback finished. Total {len(all_chunks)} chunks from {num_files} PDF(s).")
+                    f"Sequential fallback finished. Total {len(all_chunks)} chunks from {num_files} PDF(s)."
+                )
         else:
             print(
-                f"Starting PDF processing sequentially for {len(valid_pdf_paths)} PDF file(s)...")
+                f"Starting PDF processing sequentially for {len(valid_pdf_paths)} PDF file(s)..."
+            )
             for args_tuple in process_args_list:
                 chunks = Utils._process_single_pdf_for_chunking(args_tuple)
                 all_chunks.extend(chunks)
             print(
-                f"Sequential processing finished. Total {len(all_chunks)} chunks from {len(valid_pdf_paths)} PDF(s).")
+                f"Sequential processing finished. Total {len(all_chunks)} chunks from {len(valid_pdf_paths)} PDF(s)."
+            )
 
         return all_chunks
+
+    @staticmethod
+    def format_docs(docs: List[Document]) -> str:
+        """
+        Formats a list of LangChain Documents into a plain string by concatenating page_content.
+        """
+        print(f"[Debug] Formatting {len(docs)} vector documents.")
+        return "\n\n".join(doc.page_content.strip() for doc in docs if doc.page_content)
 
 
 if __name__ == "__main__":
