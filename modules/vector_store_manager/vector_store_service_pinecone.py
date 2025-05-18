@@ -18,7 +18,7 @@ def setup_pinecone_index(
     dimension: int,
     metric: str,
     region: str,
-    cloud_provider: str
+    cloud_provider: str,
 ) -> Optional[Index]:
     try:
         pc = Pinecone(api_key=pinecone_api_key)
@@ -28,15 +28,11 @@ def setup_pinecone_index(
                 name=index_name,
                 dimension=dimension,
                 metric=metric,
-                spec=ServerlessSpec(
-                    cloud=cloud_provider,
-                    region=region
-                )
+                spec=ServerlessSpec(cloud=cloud_provider, region=region),
             )
             print(f"[✅] Created new index: {index_name}")
         else:
-            print(
-                f"[ℹ️] Index '{index_name}' already exists. Using existing index.")
+            print(f"[ℹ️] Index '{index_name}' already exists. Using existing index.")
 
         return pc.Index(index_name)
 
@@ -46,12 +42,10 @@ def setup_pinecone_index(
 
 
 def get_or_create_vector_store(
-    pinecone_index: Index,
-    embedder: HuggingFaceEmbeddings
+    pinecone_index: Index, embedder: HuggingFaceEmbeddings
 ) -> Optional[PineconeVectorStore]:
     try:
-        vector_store = PineconeVectorStore(
-            index=pinecone_index, embedding=embedder)
+        vector_store = PineconeVectorStore(index=pinecone_index, embedding=embedder)
         print("[✅] Successfully fetched vector store")
         return vector_store
     except Exception as e:
@@ -60,8 +54,7 @@ def get_or_create_vector_store(
 
 
 def store_embeddings_in_pinecone(
-    documents: List[Document],
-    vector_store: PineconeVectorStore
+    documents: List[Document], vector_store: PineconeVectorStore
 ) -> Optional[PineconeVectorStore]:
     try:
         uuids = [str(uuid4()) for _ in range(len(documents))]
@@ -76,15 +69,18 @@ def store_embeddings_in_pinecone(
 
 
 def semantic_search(vector_store: PineconeVectorStore, query: str) -> List[Document]:
-    retriever = vector_store.as_retriever(
-        search_type="similarity_score_threshold",
-        search_kwargs={"k": 2, "score_threshold": 0.4},
-    )
+    try:
+        retriever = vector_store.as_retriever(
+            search_type="similarity",
+            search_kwargs={"k": 3},
+        )
+        return retriever.invoke(query)
+    except Exception as e:
+        print(f"[❌] Error during semantic search: {e}")
+        return []
 
-    return retriever.invoke(query)
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     index = setup_pinecone_index(
         pinecone_api_key=os.getenv("PINECONE_API_KEY"),
         index_name="medical-resrc-rag",
@@ -116,14 +112,16 @@ if __name__ == '__main__':
         for i, doc in enumerate(results, start=1):
             print(f"🔹 Result {i}")
             print(f"📄 Source: {doc.metadata.get('source', 'Unknown')}")
-            print(f"📄 Page: {int(doc.metadata.get('page', 0))} / {int(doc.metadata.get('total_pages', 0))}")
+            print(
+                f"📄 Page: {int(doc.metadata.get('page', 0))} / {int(doc.metadata.get('total_pages', 0))}"
+            )
             print(f"🔖 Page Label: {doc.metadata.get('page_label', 'N/A')}")
             print("📝 Content Preview:")
             print(doc.page_content.strip()[:500] + "...")
             print("-" * 80)
     else:
         print("❌ No results found.")
-        
+
     # else:
     #     documents = [
     #         Document(

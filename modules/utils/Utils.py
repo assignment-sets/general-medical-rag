@@ -271,9 +271,16 @@ class Utils:
     def format_docs(docs: List[Document]) -> str:
         """
         Formats a list of LangChain Documents into a plain string by concatenating page_content.
+        Returns an empty string if the list is empty or an error occurs.
         """
-        print(f"[Debug] Formatting {len(docs)} vector documents.")
-        return "\n\n".join(doc.page_content.strip() for doc in docs if doc.page_content)
+        try:
+            if not docs:
+                return ""
+            print(f"[Debug] Formatting {len(docs)} vector documents.")
+            return "\n\n".join(doc.page_content.strip() for doc in docs if getattr(doc, "page_content", None))
+        except Exception as e:
+            print(f"[Error] Exception in format_docs: {e}")
+            return ""
 
 
 if __name__ == "__main__":

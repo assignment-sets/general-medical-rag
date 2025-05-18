@@ -9,7 +9,7 @@ from operator import itemgetter
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
-from modules.utils.Utils import Utils
+from modules.utils import Utils
 from modules.web_search_manager.web_search_service_gemini import web_search
 from modules.vector_store_manager.vector_store_service_pinecone import (
     semantic_search,
@@ -26,13 +26,11 @@ try:
     llm1 = ChatGoogleGenerativeAI(
         model="gemini-2.0-flash",
         temperature=0.3,
-        convert_system_message_to_human=True,
     )
 
     llm2 = ChatGoogleGenerativeAI(
         model="gemini-2.0-flash",
         temperature=0.7,
-        convert_system_message_to_human=True,
     )
 
 except Exception as e:
@@ -50,6 +48,7 @@ def perform_web_search(query: str) -> str:
         return web_search_results
     except Exception as e:
         print(f"[Error] {e}")
+        return ""
 
 
 def perform_vector_search(query: str) -> str:
@@ -65,11 +64,12 @@ def perform_vector_search(query: str) -> str:
         )
         vector_store = get_or_create_vector_store(pinecone_index, embedder)
         vector_search_results = semantic_search(vector_store, query)
-
-        return Utils.format_docs(vector_search_results)
+        formatted_vector_search_results = Utils.format_docs(vector_search_results)
+        return formatted_vector_search_results
 
     except Exception as e:
         print(f"[Error] {e}")
+        return ""
 
 
 # --- 1. LLM1 – Query Structuring Chain ---
@@ -77,6 +77,9 @@ def perform_vector_search(query: str) -> str:
 query_structuring_prompt = ChatPromptTemplate.from_template(
     """Given the user's query, improve it into a clear, succinct and structured question
     suitable for efficient information retrieval. Focus on key medical terms and symptoms.
+    
+    **important: If the user query is unrelated to the medical or health domain, or involves unethical, harmful, or inappropriate content, please indicate this briefly in the structured query.
+    
     User Query: {user_query}
     Structured Query:"""
 )
@@ -185,7 +188,9 @@ rag_chain = full_context_preparation_chain | llm2_chain
 
 # --- How to run it (example) ---
 if __name__ == "__main__":
-    sample_user_query = "What can you do if you have Leishmaniasis disease"
+    # sample_user_query = "Cure of Measles disease"
+    sample_user_query = "i wanna fuck my wife allright ?"
+    # sample_user_query = "who is the best football player ?"
 
     print(f"--- Invoking RAG Chain for query: '{sample_user_query}' ---")
     final_response = rag_chain.invoke(sample_user_query)
