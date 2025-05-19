@@ -1,5 +1,4 @@
-import os
-from dotenv import load_dotenv
+import concurrent.futures
 from langchain_core.runnables import (
     RunnableParallel,
     RunnablePassthrough,
@@ -11,17 +10,18 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from modules.utils import Utils
 from modules.web_search_manager.web_search_service_gemini import web_search
-from modules.vector_store_manager.vector_store_service_pinecone import (
-    semantic_search,
-    get_or_create_vector_store,
-    setup_pinecone_index,
-)
+from modules.vector_store_manager.vector_store_service_pinecone import semantic_search
 
-load_dotenv()
+
 
 # creating instances of the required models
 try:
     embedder = Utils.get_embedder()
+    pinecone_index = Utils.get_pinecone_index()
+    web_search_client = Utils.get_web_search_model()
+    vector_store = Utils.get_vector_store(
+        pinecone_index=pinecone_index, embedder=embedder
+    )
 
     llm1 = ChatGoogleGenerativeAI(
         model="gemini-2.0-flash",
@@ -34,42 +34,38 @@ try:
     )
 
 except Exception as e:
-    print(f"[Startup Error] Failed to initialize embedder or LLMs: {e}")
+    print(f"[Startup Error] Failed to initialize models: {e}")
     raise SystemExit(1)
 
 
+# Helper to add timeout logic to any function
+def call_with_timeout(func, *args, timeout: int = 10, fallback: str = "") -> str:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(func, *args)
+        try:
+            return future.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            print(f"[⏱️ Timeout] Function '{func.__name__}' exceeded {timeout}s.")
+        except Exception as e:
+            print(f"[❌ Error] Function '{func.__name__}' raised: {e}")
+        return fallback
+
+
 def perform_web_search(query: str) -> str:
-    """
-    Placeholder for actual Google Gemini Web Search API call.
-    """
-    try:
+    def _search():
         print(f"[Debug] Web searching for: {query}")
-        web_search_results = web_search(query)
-        return web_search_results
-    except Exception as e:
-        print(f"[Error] {e}")
-        return ""
+        return web_search(web_search_client, query)
+
+    return call_with_timeout(_search, timeout=10, fallback="No results")
 
 
 def perform_vector_search(query: str) -> str:
-    try:
+    def _search():
         print(f"[Debug] Vector searching for: {query}")
-        pinecone_index = setup_pinecone_index(
-            pinecone_api_key=os.getenv("PINECONE_API_KEY"),
-            index_name="medical-resrc-rag",
-            dimension=384,
-            metric="cosine",
-            region="us-east-1",
-            cloud_provider="aws",
-        )
-        vector_store = get_or_create_vector_store(pinecone_index, embedder)
-        vector_search_results = semantic_search(vector_store, query)
-        formatted_vector_search_results = Utils.format_docs(vector_search_results)
-        return formatted_vector_search_results
+        results = semantic_search(vector_store, query)
+        return Utils.format_docs(results)
 
-    except Exception as e:
-        print(f"[Error] {e}")
-        return ""
+    return call_with_timeout(_search, timeout=10, fallback="No results")
 
 
 # --- 1. LLM1 – Query Structuring Chain ---
@@ -189,7 +185,7 @@ rag_chain = full_context_preparation_chain | llm2_chain
 # --- How to run it (example) ---
 if __name__ == "__main__":
     # sample_user_query = "Cure of Measles disease"
-    sample_user_query = "i wanna fuck my wife allright ?"
+    sample_user_query = ""
     # sample_user_query = "who is the best football player ?"
 
     print(f"--- Invoking RAG Chain for query: '{sample_user_query}' ---")

@@ -6,7 +6,7 @@ from langchain_pinecone import PineconeVectorStore
 from langchain_huggingface import HuggingFaceEmbeddings
 from uuid import uuid4
 from dotenv import load_dotenv
-from modules.utils.Utils import Utils
+from modules.utils import Utils
 
 
 load_dotenv()

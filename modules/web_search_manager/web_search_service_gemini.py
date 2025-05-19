@@ -1,14 +1,9 @@
-from google import genai
 from google.genai import types
-from dotenv import load_dotenv
-import os
+from google.genai.client import Client
+from google import genai
 
-load_dotenv()
 
-# Create a client instance for interacting with the Google GenAI API
-client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
-
-def web_search(query: str) -> str:
+def web_search(client: Client, query: str) -> str:
     """
     This function performs a web search using the Google GenAI API and returns
     the text of the search result.
@@ -21,22 +16,20 @@ def web_search(query: str) -> str:
     """
     try:
         response = client.models.generate_content(
-            model='gemini-2.0-flash',
+            model="gemini-2.0-flash",
             contents=query,
             config=types.GenerateContentConfig(
-                tools=[types.Tool(
-                    google_search=types.GoogleSearchRetrieval()
-                )]
-            )
+                tools=[types.Tool(google_search=types.GoogleSearchRetrieval())]
+            ),
         )
         return response.candidates[0].content.parts[0].text
     except Exception as e:
         # Log the exception or handle it as needed
-        return f"An error occurred during web search: {str(e)}"
+        return f"[ERROR] An error occurred during web search: {str(e)}"
 
 
-if __name__ == '__main__':
-    # Example usage if you run the module directly
+if __name__ == "__main__":
+    client = genai.Client(api_key="<GOOGLE_API_KEY>")
     query = "what are some medications used for Lyme Disease"
-    result = web_search(query)
+    result = web_search(client, query)
     print(result)
