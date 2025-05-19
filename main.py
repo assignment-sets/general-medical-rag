@@ -1,4 +1,4 @@
-from modules.rag_pipeline import rag_chain
+from modules.rag_pipeline.rag_engine_chain import rag_chain, query_classifier_chain
 from fastapi.responses import JSONResponse
 from fastapi import FastAPI, status, Query
 
@@ -25,13 +25,19 @@ def retrieve_from_rag(
         )
 
     try:
-        result = rag_chain.invoke(cleaned_query)
+        classification = query_classifier_chain.invoke(cleaned_query)
+        is_valid = classification.get("is_valid_query", "").strip().lower() == "true"
 
-        # Ensure JSON-serializable output
-        if not isinstance(result, (dict, list)):
-            result = {"response": str(result)}
+        if is_valid:
+            response = rag_chain.invoke(cleaned_query)
+            if not isinstance(response, (dict, list)):
+                response = {"response": str(response)}
+        else:
+            response = {
+                "response": "Sorry, I can only assist with valid medical questions. Please rephrase your query to be more medically relevant."
+            }
 
-        return JSONResponse(status_code=status.HTTP_200_OK, content=result)
+        return JSONResponse(status_code=status.HTTP_200_OK, content=response)
 
     except Exception as e:
         return JSONResponse(

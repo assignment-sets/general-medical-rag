@@ -1,95 +1,13 @@
 import os
 import multiprocessing
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 from pypdf import PdfReader, PdfWriter
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
-from langchain_huggingface import HuggingFaceEmbeddings
-from google import genai
-from google.genai.client import Client
-from modules.vector_store_manager.vector_store_service_pinecone import (
-    setup_pinecone_index,
-)
-from pinecone import Index
-from langchain_pinecone import PineconeVectorStore
-from dotenv import load_dotenv
-
-load_dotenv()
 
 
 class Utils:
-    _embedder = None
-    _web_search_client = None
-    _pinecone_index = None
-    _vector_store = None
-
-    @staticmethod
-    def get_pinecone_index() -> Optional[Index]:
-        if Utils._pinecone_index is None:
-            try:
-                print("[ℹ️] Loading pinecone index...")
-                Utils._pinecone_index = setup_pinecone_index(
-                    pinecone_api_key=os.getenv("PINECONE_API_KEY"),
-                    index_name="medical-resrc-rag",
-                    dimension=384,
-                    metric="cosine",
-                    region="us-east-1",
-                    cloud_provider="aws",
-                )
-                print("[✅] pinecone index loaded.")
-            except Exception as e:
-                print(e)
-                Utils._pinecone_index = None
-
-        return Utils._pinecone_index
-
-    @staticmethod
-    def get_embedder() -> HuggingFaceEmbeddings:
-        if Utils._embedder is None:
-            try:
-                print("[ℹ️] Loading embedding model...")
-                Utils._embedder = HuggingFaceEmbeddings(
-                    model_name="sentence-transformers/all-MiniLM-L6-v2"
-                )
-                print("[✅] Embedder loaded.")
-            except Exception as e:
-                print(f"[❌] Failed to load embedder: {e}")
-                Utils._embedder = None
-        return Utils._embedder
-
-    @staticmethod
-    def get_vector_store(
-        pinecone_index: Index, embedder: HuggingFaceEmbeddings
-    ) -> Optional[PineconeVectorStore]:
-        if Utils._vector_store is None:
-            try:
-                print("[ℹ️] Loading vector store...")
-                Utils._vector_store = PineconeVectorStore(
-                    index=pinecone_index, embedding=embedder
-                )
-                print("[✅] Successfully fetched vector store")
-            except Exception as e:
-                print(f"[❌] Error fetching vector store: {e}")
-                Utils._vector_store = None
-
-        return Utils._vector_store
-
-    @staticmethod
-    def get_web_search_model() -> Client:
-        if Utils._web_search_client is None:
-            try:
-                print("[ℹ️] Loading web search model...")
-                Utils._web_search_client = genai.Client(
-                    api_key=os.getenv("GOOGLE_API_KEY")
-                )
-                print("[✅] Successfully fetched web search model")
-            except Exception as e:
-                print(f"[❌] Exception creating web search client: {e}")
-                Utils._web_search_client = None
-
-        return Utils._web_search_client
-
     @staticmethod
     def remove_leading_and_trailing_pages(
         pdf_path: str, pages_to_remove_from_start: int, pages_to_remove_from_end: int
