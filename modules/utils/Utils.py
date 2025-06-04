@@ -5,6 +5,7 @@ from pypdf import PdfReader, PdfWriter
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
+import concurrent.futures
 
 
 class Utils:
@@ -268,6 +269,17 @@ class Utils:
             print(f"[Error] Exception in format_docs: {e}")
             return ""
 
+    @staticmethod
+    def call_with_timeout(func, *args, timeout: int = 30, fallback: str = "") -> str:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(func, *args)
+            try:
+                return future.result(timeout=timeout)
+            except concurrent.futures.TimeoutError:
+                print(f"[⏱️ Timeout] Function '{func.__name__}' exceeded {timeout}s.")
+            except Exception as e:
+                print(f"[❌ Error] Function '{func.__name__}' raised: {e}")
+            return fallback
 
 if __name__ == "__main__":
     pass

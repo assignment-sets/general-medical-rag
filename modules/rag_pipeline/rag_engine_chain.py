@@ -1,4 +1,3 @@
-import concurrent.futures
 from langchain_core.runnables import (
     RunnableParallel,
     RunnablePassthrough,
@@ -7,8 +6,8 @@ from langchain_core.runnables import (
 from operator import itemgetter
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from modules.utils import Utils
-from modules.app_cache import AppCache
+from modules.utils.Utils import Utils
+from modules.app_cache.AppCache import AppCache
 from modules.web_search_manager.web_search_service_gemini import web_search
 from modules.vector_store_manager.vector_store_service_pinecone import semantic_search
 
@@ -30,34 +29,24 @@ except Exception as e:
     raise SystemExit(1)
 
 
-# Helper to add timeout logic to any function
-def call_with_timeout(func, *args, timeout: int = 30, fallback: str = "") -> str:
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(func, *args)
-        try:
-            return future.result(timeout=timeout)
-        except concurrent.futures.TimeoutError:
-            print(f"[⏱️ Timeout] Function '{func.__name__}' exceeded {timeout}s.")
-        except Exception as e:
-            print(f"[❌ Error] Function '{func.__name__}' raised: {e}")
-        return fallback
-
-
 def perform_web_search(query: str) -> str:
     def _search():
-        print(f"[Debug] Web searching for: {query}")
-        return web_search(web_search_client, query)
+        print("[Debug] Web search start")
+        result = web_search(web_search_client, query)
+        print("[Debug] Web search end")
+        return result
 
-    return call_with_timeout(_search, timeout=30, fallback="No results")
+    return Utils.call_with_timeout(_search, timeout=15, fallback="No results")
 
 
 def perform_vector_search(query: str) -> str:
     def _search():
-        print(f"[Debug] Vector searching for: {query}")
+        print("[Debug] Vector search start")
         results = semantic_search(vector_store, query)
+        print("[Debug] Vector search end")
         return Utils.format_docs(results)
 
-    return call_with_timeout(_search, timeout=10, fallback="No results")
+    return Utils.call_with_timeout(_search, timeout=10, fallback="No results")
 
 
 # --- 0. llm_query_classifier – Bad Query Classifier Chain ---
@@ -81,7 +70,7 @@ query_classifier_chain = RunnableParallel(
 # --- 1. llm_query_rewriter – Query Structuring Chain ---
 # Takes the raw user query (as a string) and refines it.
 query_structuring_prompt = ChatPromptTemplate.from_template(
-    """Given the user's query, improve it into a clear, succinct and structured question
+    """Given the user's medical query, improve it into a clear, succinct and structured question
     suitable for efficient information retrieval. Focus on key medical terms and symptoms.
         
     User Query: {user_query}
@@ -112,30 +101,35 @@ vector_search_runnable = RunnableLambda(perform_vector_search)
 # We'll construct a dictionary containing all necessary pieces of information.
 
 # --- 4. llm_synthesizer – Final Answer Generation Chain ---
-final_answer_prompt_template = """You are a helpful medical AI assistant.
-Your goal is to synthesize information from various sources to answer the query in your own way.
-provide general information based on the retrieved context along with medical advice, diagnosis, or treatment recommendations if available.
+final_answer_prompt_template = """You are a helpful and responsible medical AI assistant talking to an end user patient.
 
-**important: suggest consulting a healthcare professional than directly relying on your response as a safety measure when you feel necessary.
+You will be provided with two sources of information by the system:
+1. Web Search Context
+2. Vector Database Context
 
-**important: if the query is not related to medical domain or knowledge seeking purpose response with a graceful reminder of your purpose and usecase and do not provide any other information out of context as a medical assistant.
+Your role is to synthesize or derive accurate, accessible, and medically sound responses for users who are not medical professionals. Therefore if you are able to find technical information or scientific terminologies and detailed analogy of professional in the context do include the knowledge in your response but present in a way that is also understandable to the lay users with proper short explanations.
 
-**important: if you are unable find any relevant information from any of the provided sources then you are free to fall back to your own knowledge base to generate a response to query only if you have relevant knowledge about the query.
+**IMPORTANT:**
+- The context is being provided to help you construct the response not to blindly put them in response without understanding
+- Strive for a balance between clarity for lay readers and the clinical depth expected from evidence-based medical references.
+- These sources may sometimes contain inaccurate, superstitious, outdated, or misleading information. Use your own reasoning and general medical knowledge to verify the accuracy before including anything in your response.
+- If the context appears unreliable or insufficient, you may supplement it with your own internal knowledge — but only if you are confident in its relevance and accuracy.
+- If neither the context nor your knowledge provides a reliable basis for a meaningful answer, politely inform the user that you cannot help with this query.
+- Always include a gentle reminder to consult a qualified healthcare professional before making any health-related decisions.
 
-**important: if you are unable find any relevant information from any of the provided sources and you also do not have any relevant information to provide as a fall back response to the query then please politely let the user know that you can not help regarding given query.
+---
 
-Query (used for retrieval): {structured_query}
+**Query (used for retrieval):**
+{structured_query}
 
-Combined Retrieved Context (to be used by you for generating response when possible):
+**Retrieved Context for You to Consider:**
 --- Web Search Context ---
 {web_context}
 --- Vector Database Context ---
 {vector_context}
 ---
 
-Based *only* on the information above, synthesize a comprehensive, informative, and neutral response to the Original User Query.
-If the provided context is insufficient or conflicting, clearly state that.
-Remember to advise the user to consult with a qualified healthcare professional for any medical concerns.
+Using the given context, derive or synthesize a clear, informative, and succinct response to the user's original query.
 
 Final Answer:"""
 
@@ -192,29 +186,12 @@ full_context_preparation_chain = (
 # The final RAG chain:
 rag_chain = full_context_preparation_chain | llm_synthesizer_chain
 
-
 if __name__ == "__main__":
-    # sample_user_query = "Cure of Measles disease"
-    sample_user_query = "who is the best football player ?"
+    import time
 
-    res = query_classifier_chain.invoke(sample_user_query)
-    is_valid_query = res["is_valid_query"].strip().lower()
-    if is_valid_query not in ("true", "false"):
-        is_valid_query = "false"
-        
-    if is_valid_query == "true":
-        print(f"--- Invoking RAG Chain for query: '{sample_user_query}' ---")
-        final_response = rag_chain.invoke(sample_user_query)
-
-        print("\n--- Final Generated Response ---")
-        print(final_response)
-
-        # To see the intermediate steps (very useful for debugging):
-        # print("\n--- Intermediate steps from full_context_preparation_chain ---")
-        # intermediate_data = full_context_preparation_chain.invoke(sample_user_query)
-        # import json
-
-        # print(json.dumps(intermediate_data, indent=2))
-
-    else:
-        print("Sorry, I can't assist with that query.")
+    user_query = "how to treat cancer at home"
+    start_time = time.time()
+    res = rag_chain.invoke({"user_query": user_query})
+    end_time = time.time()
+    print(res)
+    print(f"[Timing] Total response time: {end_time - start_time:.4f} seconds")

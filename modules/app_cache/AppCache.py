@@ -1,8 +1,6 @@
 import os
 from typing import Optional
 from langchain_huggingface import HuggingFaceEmbeddings
-from google import genai
-from google.genai.client import Client
 from modules.vector_store_manager.vector_store_service_pinecone import (
     setup_pinecone_index,
 )
@@ -123,16 +121,17 @@ class AppCache:
         return AppCache._vector_store
 
     @staticmethod
-    def get_web_search_model() -> Client:
+    def get_web_search_model() -> ChatGoogleGenerativeAI:
         if AppCache._web_search_client is None:
             try:
                 print("[ℹ️] Loading web search model...")
-                AppCache._web_search_client = genai.Client(
-                    api_key=os.getenv("GOOGLE_API_KEY")
+                AppCache._web_search_client = ChatGoogleGenerativeAI(
+                    model="gemini-2.0-flash",
+                    google_api_key=os.getenv("GOOGLE_API_KEY"),
                 )
                 print("[✅] Successfully fetched web search model")
             except Exception as e:
-                print(f"[❌] Exception creating web search client: {e}")
+                print(f"[❌] Exception creating web search model: {e}")
                 AppCache._web_search_client = None
 
         return AppCache._web_search_client
